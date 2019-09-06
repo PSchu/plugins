@@ -161,7 +161,8 @@ class CameraValue {
   /// Convenience getter for `previewSize.height / previewSize.width`.
   ///
   /// Can only be called when [initialize] is done.
-  double get aspectRatio => previewSize.height / previewSize.width;
+  double get aspectRatio => previewSize.width / previewSize.height;
+  double get invertedAspectRatio => previewSize.height / previewSize.width;
 
   bool get hasError => errorDescription != null;
 
@@ -203,11 +204,12 @@ class CameraValue {
 ///
 /// To show the camera preview on the screen use a [CameraPreview] widget.
 class CameraController extends ValueNotifier<CameraValue> {
-  CameraController(this.description, this.resolutionPreset)
+  CameraController(this.description, this.resolutionPreset, this.orientation)
       : super(const CameraValue.uninitialized());
 
   final CameraDescription description;
   final ResolutionPreset resolutionPreset;
+  final DeviceOrientation orientation;
 
   int _textureId;
   bool _isDisposed = false;
@@ -230,6 +232,7 @@ class CameraController extends ValueNotifier<CameraValue> {
         <String, dynamic>{
           'cameraName': description.name,
           'resolutionPreset': serializeResolutionPreset(resolutionPreset),
+          'orientation': orientation.toString(),
         },
       );
       _textureId = reply['textureId'];

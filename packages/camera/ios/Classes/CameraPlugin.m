@@ -119,7 +119,7 @@ static FlutterError *getFlutterError(NSError *error) {
                               AVCaptureAudioDataOutputSampleBufferDelegate,
                               FlutterStreamHandler>
 @property(readonly, nonatomic) int64_t textureId;
-@property(nonatomic, copy) void (^onFrameAvailable)();
+@property(nonatomic, copy) void (^onFrameAvailable)(void);
 @property(nonatomic) FlutterEventChannel *eventChannel;
 @property(nonatomic) FLTImageStreamHandler *imageStreamHandler;
 @property(nonatomic) FlutterEventSink eventSink;
@@ -141,8 +141,11 @@ static FlutterError *getFlutterError(NSError *error) {
 @property(assign, nonatomic) BOOL isAudioSetup;
 @property(assign, nonatomic) BOOL isStreamingImages;
 @property(nonatomic) CMMotionManager *motionManager;
+@property(nonatomic) UIDeviceOrientation orientation;
+
 - (instancetype)initWithCameraName:(NSString *)cameraName
                   resolutionPreset:(NSString *)resolutionPreset
+                       orientation: (UIDeviceOrientation)orientation
                      dispatchQueue:(dispatch_queue_t)dispatchQueue
                              error:(NSError **)error;
 
@@ -163,13 +166,14 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
 
 - (instancetype)initWithCameraName:(NSString *)cameraName
                   resolutionPreset:(NSString *)resolutionPreset
+                       orientation: (UIDeviceOrientation)orientation
                      dispatchQueue:(dispatch_queue_t)dispatchQueue
                              error:(NSError **)error {
   self = [super init];
   NSAssert(self, @"super init cannot be nil");
   _dispatchQueue = dispatchQueue;
   _captureSession = [[AVCaptureSession alloc] init];
-
+  _orientation = orientation;
   _captureDevice = [AVCaptureDevice deviceWithUniqueID:cameraName];
   NSError *localError = nil;
   _captureVideoInput = [AVCaptureDeviceInput deviceInputWithDevice:_captureDevice
@@ -191,7 +195,16 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   if ([_captureDevice position] == AVCaptureDevicePositionFront) {
     connection.videoMirrored = YES;
   }
+
   connection.videoOrientation = AVCaptureVideoOrientationPortrait;
+      if (UIDeviceOrientationPortraitUpsideDown == self.orientation) {
+          connection.videoOrientation = AVCaptureVideoOrientationPortraitUpsideDown;
+      } else if (UIDeviceOrientationLandscapeLeft == self.orientation) {
+          connection.videoOrientation = AVCaptureVideoOrientationLandscapeLeft;
+      } else if (UIDeviceOrientationLandscapeRight == self.orientation) {
+          connection.videoOrientation = AVCaptureVideoOrientationLandscapeRight;  
+      }
+
   [_captureSession addInputWithNoConnections:_captureVideoInput];
   [_captureSession addOutputWithNoConnections:_captureVideoOutput];
   [_captureSession addConnection:connection];
@@ -237,44 +250,57 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
     presetIndex = 3;
   }
 
+  CGFloat width;
+  CGFloat height;
   switch (presetIndex) {
-    case 0:
-      if ([_captureSession canSetSessionPreset:AVCaptureSessionPreset3840x2160]) {
-        _captureSession.sessionPreset = AVCaptureSessionPreset3840x2160;
-        _previewSize = CGSizeMake(3840, 2160);
-        break;
+      case 0:
+          if ([_captureSession canSetSessionPreset:AVCaptureSessionPreset3840x2160]) {
+              _captureSession.sessionPreset = AVCaptureSessionPreset3840x2160;
+              width = 3840;
+              height = 2160;
+              break;
+          }
+      case 1:
+          if ([_captureSession canSetSessionPreset:AVCaptureSessionPreset1920x1080]) {
+              _captureSession.sessionPreset = AVCaptureSessionPreset1920x1080;
+              width = 1920;
+              height = 1080;
+              break;
+          }
+      case 2:
+          if ([_captureSession canSetSessionPreset:AVCaptureSessionPreset1280x720]) {
+              _captureSession.sessionPreset = AVCaptureSessionPreset1280x720;
+              width = 1280;
+              height = 720;
+              break;
+          }
+      case 3:
+          if ([_captureSession canSetSessionPreset:AVCaptureSessionPreset640x480]) {
+              _captureSession.sessionPreset = AVCaptureSessionPreset640x480;
+              width = 640;
+              height = 480;
+              break;
+          }
+      case 4:
+          if ([_captureSession canSetSessionPreset:AVCaptureSessionPreset352x288]) {
+              _captureSession.sessionPreset = AVCaptureSessionPreset352x288;
+              width = 352;
+              height = 288;
+              break;
+          }
+      default: {
+          NSException *exception = [NSException
+                                    exceptionWithName:@"NoAvailableCaptureSessionException"
+                                    reason:@"No capture session available for current capture session."
+                                    userInfo:nil];
+          @throw exception;
       }
-    case 1:
-      if ([_captureSession canSetSessionPreset:AVCaptureSessionPreset1920x1080]) {
-        _captureSession.sessionPreset = AVCaptureSessionPreset1920x1080;
-        _previewSize = CGSizeMake(1920, 1080);
-        break;
-      }
-    case 2:
-      if ([_captureSession canSetSessionPreset:AVCaptureSessionPreset1280x720]) {
-        _captureSession.sessionPreset = AVCaptureSessionPreset1280x720;
-        _previewSize = CGSizeMake(1280, 720);
-        break;
-      }
-    case 3:
-      if ([_captureSession canSetSessionPreset:AVCaptureSessionPreset640x480]) {
-        _captureSession.sessionPreset = AVCaptureSessionPreset640x480;
-        _previewSize = CGSizeMake(640, 480);
-        break;
-      }
-    case 4:
-      if ([_captureSession canSetSessionPreset:AVCaptureSessionPreset352x288]) {
-        _captureSession.sessionPreset = AVCaptureSessionPreset352x288;
-        _previewSize = CGSizeMake(352, 288);
-        break;
-      }
-    default: {
-      NSException *exception = [NSException
-          exceptionWithName:@"NoAvailableCaptureSessionException"
-                     reason:@"No capture session available for current capture session."
-                   userInfo:nil];
-      @throw exception;
-    }
+  }
+
+  if (UIDeviceOrientationIsPortrait(self.orientation)) {
+      _previewSize = CGSizeMake(height,width);
+  } else {
+      _previewSize = CGSizeMake(width,height);
   }
 }
 
@@ -543,10 +569,10 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
     _eventSink(@{@"event" : @"error", @"errorDescription" : error.description});
     return NO;
   }
-  NSDictionary *videoSettings = [NSDictionary
-      dictionaryWithObjectsAndKeys:AVVideoCodecH264, AVVideoCodecKey,
-                                   [NSNumber numberWithInt:_previewSize.height], AVVideoWidthKey,
-                                   [NSNumber numberWithInt:_previewSize.width], AVVideoHeightKey,
+    NSDictionary *videoSettings = [NSDictionary
+                                   dictionaryWithObjectsAndKeys:AVVideoCodecH264, AVVideoCodecKey,
+                                   [NSNumber numberWithInt:_previewSize.width], AVVideoWidthKey,
+                                   [NSNumber numberWithInt:_previewSize.height], AVVideoHeightKey,
                                    nil];
   _videoWriterInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo
                                                          outputSettings:videoSettings];
@@ -675,9 +701,11 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   } else if ([@"initialize" isEqualToString:call.method]) {
     NSString *cameraName = call.arguments[@"cameraName"];
     NSString *resolutionPreset = call.arguments[@"resolutionPreset"];
+    NSString *orientation = call.arguments[@"orientation"];
     NSError *error;
     FLTCam *cam = [[FLTCam alloc] initWithCameraName:cameraName
                                     resolutionPreset:resolutionPreset
+                                         orientation: [self deviceOrientationFor:orientation]
                                        dispatchQueue:_dispatchQueue
                                                error:&error];
     if (error) {
@@ -735,6 +763,19 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
       result(FlutterMethodNotImplemented);
     }
   }
+}
+
+- (UIDeviceOrientation) deviceOrientationFor: (NSString *) orientationString {
+    if ([orientationString isEqualToString:@"DeviceOrientation.portraitUp"]) {
+        return UIDeviceOrientationPortrait;
+    } else if ([orientationString isEqualToString:@"DeviceOrientation.portraitDown"]) {
+        return UIDeviceOrientationPortraitUpsideDown;
+    } else if ([orientationString isEqualToString:@"DeviceOrientation.landscapeLeft"]) {
+        return UIDeviceOrientationLandscapeLeft;
+    } else if ([orientationString isEqualToString:@"DeviceOrientation.landscapeRight"]) {
+        return UIDeviceOrientationLandscapeRight;
+    }
+    return UIDeviceOrientationLandscapeLeft;
 }
 
 @end
