@@ -247,7 +247,7 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   } else {
     NSAssert([resolutionPreset isEqualToString:@"low"], @"Unknown resolution preset %@",
              resolutionPreset);
-    presetIndex = 3;
+    presetIndex = 4;
   }
 
   CGFloat width;
